@@ -211,7 +211,7 @@ class PrusaGcodes:
     cmd_M900_help = "Enable/Disable pressure advance"
     def cmd_M900(self, params):
         if 'K' in params:
-            pressure = self.gcode.get_int('K', params)
+            pressure = self.gcode.get_float('K', params)
             pa_gcode = "SET_PRESSURE_ADVANCE ADVANCE=%.4f"
             if pressure:
                 self.gcode.run_script_from_command(
