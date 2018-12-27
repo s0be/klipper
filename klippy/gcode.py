@@ -48,13 +48,13 @@ class GCodeParser:
         self.speed_factor = 1. / 60.
         self.extrude_factor = 1.
         self.move_transform = self.move_with_transform = None
-        self.position_with_transform = (lambda: [0., 0., 0., 0.])
+        self.position_with_transform = (lambda: [0., 0., 0., 0., 0., 0., 0.])
         # G-Code state
         self.need_ack = False
         self.toolhead = self.fan = self.extruder = None
         self.heaters = []
         self.speed = 25.0
-        self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3}
+        self.axis2pos = {'X': 0, 'Y': 1, 'Z': 2, 'E': 3, 'I': 4, 'P': 5, 'S': 6}
     def register_command(self, cmd, func, when_not_ready=False, desc=None):
         if func is None:
             if cmd in self.ready_gcode_handlers:
@@ -511,7 +511,7 @@ class GCodeParser:
     def cmd_G28(self, params):
         # Move to origin
         axes = []
-        for axis in 'XYZ':
+        for axis in 'XYZIPS':
             if axis in params:
                 axes.append(self.axis2pos[axis])
         if not axes:
