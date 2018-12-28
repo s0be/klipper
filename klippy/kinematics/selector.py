@@ -6,7 +6,7 @@
 import logging, importlib
 
 
-class CombinedKinematics:
+class FilamentSelectorKinematics:
     def __init__(self, toolhead, config):
         self.printer = config.get_printer()
         self.toolhead = toolhead
@@ -28,42 +28,30 @@ class CombinedKinematics:
             raise config.error(msg)
 
     def get_steppers(self, flags=""):
-        logging.info("Combined: get_steppers")
-        # th_steppers = self.toolhead_kinematics.get_steppers(flags)
-        f_steppers = self.filament_kinematics.get_steppers(flags)
-        return f_steppers
+        return self.toolhead_kinematics.get_steppers(flags)
 
     def calc_position(self):
-        logging.info("Combined: calc_position")
-        # th_posi = self.toolhead_kinematics.calc_position()
-        f_posi = self.filament_kinematics.calc_position()
-        return f_posi
+        return self.toolhead_kinematics.calc_position()
 
     def set_position(self, newpos, homing_axes):
-        logging.info("Combined: set_position")
-        # self.toolhead_kinematics.set_position(newpos, homing_axes)
-        self.filament_kinematics.set_position(newpos, homing_axes)
+        self.toolhead_kinematics.set_position(newpos, homing_axes)
 
     def home(self, homing_state):
-        logging.info("Combined: home")
         # self.toolhead_kinematics.home(homing_state)
-        self.filament_kinematics.home(homing_state)
+        self.filament_kinematics.home()
 
     def motor_off(self, print_time):
         logging.info("Combined: motor_off")
-        # self.toolhead_kinematics.motor_off(print_time)
+        self.toolhead_kinematics.motor_off(print_time)
         self.filament_kinematics.motor_off(print_time)
 
     def check_move(self, move):
-        logging.info("Combined: check_move")
-        # self.toolhead_kinematics.check_move(move)
-        self.filament_kinematics.check_move(move)
+        self.toolhead_kinematics.check_move(move)
 
     def move(self, print_time, move):
-        logging.info("Combined: move")
-        # self.toolhead_kinematics.move(print_time, move)
         self.filament_kinematics.move(print_time, move)
+        # self.toolhead_kinematics.move(print_time, move)
 
 
 def load_kinematics(toolhead, config):
-    return CombinedKinematics(toolhead, config)
+    return FilamentSelectorKinematics(toolhead, config)
