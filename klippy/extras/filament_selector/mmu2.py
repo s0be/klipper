@@ -3,41 +3,38 @@
 # Copyright (C) 2018  Trevor Jones <trevorjones141@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
-import logging, pins, mcu
+import logging, pins, mcu, extras.hc595
 import ips_filament_selector
 
 
 class MMU2:
     FLASH_DELAY = .1
 
-    sr_pins = {"stepper_1_dir": 'PG0', "stepper_1_enable": 'PG1',
-               "stepper_2_dir": 'PG2', "stepper_2_enable": 'PG3',
-               "stepper_3_dir": 'PG4', "stepper_3_enable": 'PG5'}
-
     def __init__(self, filament_toolhead, config):
         self.printer = config.get_printer()
         self.printer.add_object("mmu2", self)
-        self._mcu_name = config.get('mcu', 'mmu2')
-        self._mcu = mcu.get_printer_mcu(self.printer, self._mcu_name)
+        mcu_name = config.get('mcu', 'mmu2')
+        self.mcu = mcu.get_printer_mcu(self.printer, mcu_name)
         self.pins = self.printer.lookup_object("pins")
         self.reactor = self.printer.get_reactor()
         self.ips_impl = ips_filament_selector.load_kinematics(filament_toolhead, config)
-        self._mcu.register_config_callback(self._build_config)
-        self.toolhead = None
-        self._rs_led = 0
 
+        self.shift_reg = extras.hc595.load_config_prefix(extras.hc595.default_config(
+            self.printer, 'hc595 mmu2_sr', mcu_name, 'PB5', 'PB6', 'PC7'
+        ))
+        self.printer.add_object('mmu2_sr', self.shift_reg)
         pins.MCU_PINS["atmega32u4"] = pins.port_pins(8)
 
-        self.led_g0 = self.pins.setup_pin('digital_out', "%s:PH0" % self._mcu_name)
-        self.led_r0 = self.pins.setup_pin('digital_out', "%s:PH1" % self._mcu_name)
-        self.led_g1 = self.pins.setup_pin('digital_out', "%s:PH2" % self._mcu_name)
-        self.led_r1 = self.pins.setup_pin('digital_out', "%s:PH3" % self._mcu_name)
-        self.led_g2 = self.pins.setup_pin('digital_out', "%s:PH4" % self._mcu_name)
-        self.led_r2 = self.pins.setup_pin('digital_out', "%s:PH5" % self._mcu_name)
-        self.led_g3 = self.pins.setup_pin('digital_out', "%s:PH6" % self._mcu_name)
-        self.led_r3 = self.pins.setup_pin('digital_out', "%s:PH7" % self._mcu_name)
-        self.led_g4 = self.pins.setup_pin('digital_out', "%s:PG6" % self._mcu_name)
-        self.led_r4 = self.pins.setup_pin('digital_out', "%s:PG7" % self._mcu_name)
+        self.led_g0 = self.pins.setup_pin('digital_out', "%s:PH0" % mcu_name)
+        self.led_r0 = self.pins.setup_pin('digital_out', "%s:PH1" % mcu_name)
+        self.led_g1 = self.pins.setup_pin('digital_out', "%s:PH2" % mcu_name)
+        self.led_r1 = self.pins.setup_pin('digital_out', "%s:PH3" % mcu_name)
+        self.led_g2 = self.pins.setup_pin('digital_out', "%s:PH4" % mcu_name)
+        self.led_r2 = self.pins.setup_pin('digital_out', "%s:PH5" % mcu_name)
+        self.led_g3 = self.pins.setup_pin('digital_out', "%s:PH6" % mcu_name)
+        self.led_r3 = self.pins.setup_pin('digital_out', "%s:PH7" % mcu_name)
+        self.led_g4 = self.pins.setup_pin('digital_out', "%s:PG6" % mcu_name)
+        self.led_r4 = self.pins.setup_pin('digital_out', "%s:PG7" % mcu_name)
         self.leds = [self.led_g0, self.led_r0,
                      self.led_g1, self.led_r1,
                      self.led_g2, self.led_r2,
@@ -45,6 +42,10 @@ class MMU2:
                      self.led_g4, self.led_r4]
         for led in self.leds:
             led.setup_max_duration(0.)
+
+        self.mcu.register_config_callback(self._build_config)
+        self.toolhead = None
+        self._rs_led = 0
 
     def _build_config(self):
         self.toolhead = self.printer.lookup_object('toolhead')
