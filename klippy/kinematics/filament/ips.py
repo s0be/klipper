@@ -22,23 +22,30 @@ class IdlerPulleySelector:
         # Setup axis rails
         self.i_rail = stepper.LookupMultiRail(config.getsection('stepper_i'))
         self.s_rail = stepper.LookupMultiRail(config.getsection('stepper_s'))
-        self.rails = {'I': self.i_rail, 'S': self.s_rail}
-        for axis, rail in self.rails.iteritems():
-            rail.setup_itersolve('cartesian_stepper_alloc', axis)
+        self.rails = {'i': self.i_rail, 's': self.s_rail}
+        self.i_rail.setup_itersolve('cartesian_stepper_alloc', 'x')
+        self.s_rail.setup_itersolve('cartesian_stepper_alloc', 'y')
 
     def home(self):
+        self.home_rail(self.i_rail)
         self.home_rail(self.s_rail)
 
-    def home_rail(self, rail):
+    def home_rail(self, rail, limit_speed=None):
         home_info = rail.get_homing_info()
         # Perform homing
         position_min, position_max = rail.get_range()
-        homepos = [home_info.position_endstop, 0, 0, 0]
+
+        # I Rail Specific
+        homepos = [home_info.position_endstop, 0., 0., 0.]
         forcepos = list(homepos)
+
         if home_info.positive_dir:
             forcepos[0] -= 1.5 * (home_info.position_endstop - position_min)
         else:
             forcepos[0] += 1.5 * (position_max - home_info.position_endstop)
+
+        # I Rail Specific
+        self.toolhead.set_position(forcepos, homing_axes=[0, None, None, None])
 
         axes_d = [mp - fp for mp, fp in zip(homepos, forcepos)]
         est_move_d = abs(axes_d[0]) + abs(axes_d[1]) + abs(axes_d[2])
@@ -46,14 +53,16 @@ class IdlerPulleySelector:
                          for es, n in rail.get_endstops() for s in es.get_steppers()])
         dwell_t = est_steps * homing.HOMING_STEP_DELAY
 
-        self.homing_move(forcepos,
-                         homepos,
-                         rail.get_endstops(),
-                         self._get_homing_speed(home_info.speed, rail.endstops),
-                         dwell_t,
-                         True)
+        max_velocity = self.toolhead.get_max_velocity()[0]
+        if limit_speed is not None and limit_speed < max_velocity:
+            max_velocity = limit_speed
+        homing_speed = min(home_info.speed, max_velocity)
+        homing_speed = self._get_homing_speed(homing_speed, rail.endstops)
+        self.homing_move(forcepos, homepos,
+                         rail.get_endstops(), homing_speed,
+                         dwell_t, True)
 
-    def homing_move(self, forcepos, movepos, endstops, speed, dwell_t=0.,verify_movement=False):
+    def homing_move(self, forcepos, movepos, endstops, speed, dwell_t=0., verify_movement=False):
         # Notify endstops of upcoming home
         for mcu_endstop, name in endstops:
             mcu_endstop.home_prepare()
@@ -73,7 +82,6 @@ class IdlerPulleySelector:
         # Issue move
         error = None
         try:
-            speed = min(speed, self.toolhead.max_velocity)
             move = toolhead.Move(self.toolhead, forcepos, movepos, speed)
             self.toolhead.move_queue.add_move(move)
         except EndstopError as e:
@@ -112,8 +120,15 @@ class IdlerPulleySelector:
             rail.motor_enable(print_time, 0)
 
     def move(self, print_time, move):
-        self.s_rail.motor_enable(print_time, 1)
-        self.s_rail.step_itersolve(move.cmove)
+        if move.axes_d[0]:
+            self.i_rail.motor_enable(print_time, 1)
+            self.i_rail.step_itersolve(move.cmove)
+        if move.axes_d[1]:
+            self.s_rail.motor_enable(print_time, 1)
+            self.s_rail.step_itersolve(move.cmove)
+
+    def get_steppers(self, flags=""):
+        return self.i_rail.get_steppers() + self.s_rail.get_steppers()
 
 
 def load_kinematics(toolhead, config):

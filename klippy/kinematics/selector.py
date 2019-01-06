@@ -28,7 +28,7 @@ class FilamentSelectorKinematics:
             raise config.error(msg)
 
     def get_steppers(self, flags=""):
-        return self.toolhead_kinematics.get_steppers(flags)
+        return self.toolhead_kinematics.get_steppers(flags) + self.filament_kinematics.get_steppers(flags)
 
     def calc_position(self):
         return self.toolhead_kinematics.calc_position()

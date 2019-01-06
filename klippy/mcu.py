@@ -108,13 +108,17 @@ class MCU_stepper:
         if ret:
             raise error("Internal error in stepcompress")
     def note_homing_end(self, did_trigger=False):
+        logging.info("note_home_end: sc_set_homing")
         ret = self._ffi_lib.stepcompress_set_homing(self._stepqueue, 0)
         if ret:
             raise error("Internal error in stepcompress")
+
+        logging.info("note_home_end: sc_reset")
         ret = self._ffi_lib.stepcompress_reset(self._stepqueue, 0)
         if ret:
             raise error("Internal error in stepcompress")
         data = (self._reset_cmd_id, self._oid, 0)
+        logging.info("note_home_end: queue_msg")
         ret = self._ffi_lib.stepcompress_queue_msg(
             self._stepqueue, data, len(data))
         if ret:
