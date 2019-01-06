@@ -42,5 +42,7 @@ cartesian_stepper_alloc(char axis)
         sk->calc_position = cart_stepper_y_calc_position;
     else if (axis == 'z')
         sk->calc_position = cart_stepper_z_calc_position;
+    else
+        errorf("Unknown cartesian stepper axis: %c", axis);
     return sk;
 }

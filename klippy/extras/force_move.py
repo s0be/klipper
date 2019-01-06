@@ -18,7 +18,7 @@ class ForceMove:
         self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
         self.move_fill = ffi_lib.move_fill
         self.stepper_kinematics = ffi_main.gc(
-            ffi_lib.cartesian_stepper_alloc('x'), ffi_lib.free)
+            ffi_lib.linear_stepper_alloc(), ffi_lib.free)
         # Register commands
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode.register_command('STEPPER_BUZZ', self.cmd_STEPPER_BUZZ,
