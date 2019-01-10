@@ -16,7 +16,7 @@ COMPILE_CMD = ("gcc -Wall -g -O2 -shared -fPIC"
                " -o %s %s")
 SOURCE_FILES = [
     'pyhelper.c', 'serialqueue.c', 'stepcompress.c', 'itersolve.c',
-    'kin_cartesian.c', 'kin_corexy.c', 'kin_delta.c', 'kin_linear.c',
+    'kin_auxiliary.c', 'kin_cartesian.c', 'kin_corexy.c', 'kin_delta.c',
     'kin_polar.c', 'kin_winch.c', 'kin_extruder.c',
 ]
 DEST_LIB = "c_helper.so"
@@ -58,6 +58,10 @@ defs_itersolve = """
     double itersolve_get_commanded_pos(struct stepper_kinematics *sk);
 """
 
+defs_kin_auxiliary = """
+    struct stepper_kinematics *auxiliary_stepper_alloc(void);
+"""
+
 defs_kin_cartesian = """
     struct stepper_kinematics *cartesian_stepper_alloc(char axis);
 """
@@ -69,10 +73,6 @@ defs_kin_corexy = """
 defs_kin_delta = """
     struct stepper_kinematics *delta_stepper_alloc(double arm2
         , double tower_x, double tower_y);
-"""
-
-defs_kin_linear = """
-    struct stepper_kinematics *linear_stepper_alloc(void);
 """
 
 defs_kin_polar = """
@@ -130,7 +130,7 @@ defs_std = """
 
 defs_all = [
     defs_pyhelper, defs_serialqueue, defs_std, defs_stepcompress, defs_itersolve,
-    defs_kin_cartesian, defs_kin_corexy, defs_kin_delta, defs_kin_linear,
+    defs_kin_auxiliary, defs_kin_cartesian, defs_kin_corexy, defs_kin_delta,
     defs_kin_polar, defs_kin_winch, defs_kin_extruder
 ]
 

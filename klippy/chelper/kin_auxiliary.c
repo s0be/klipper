@@ -1,4 +1,4 @@
-// Single linear axis kinematics stepper pulse time generation
+// Auxiliary axis kinematics stepper pulse time generation
 //
 // Copyright (C) 2019  Trevor Jones <trevorjones141@gmail.com>
 //
@@ -11,17 +11,17 @@
 #include "pyhelper.h" // errorf
 
 static double
-linear_stepper_calc_position(struct stepper_kinematics *sk, struct move *m
+auxiliary_stepper_calc_position(struct stepper_kinematics *sk, struct move *m
                              , double move_time)
 {
     return move_get_coord(m, move_time).x;
 }
 
 struct stepper_kinematics * __visible
-linear_stepper_alloc(void)
+auxiliary_stepper_alloc(void)
 {
     struct stepper_kinematics *sk = malloc(sizeof(*sk));
     memset(sk, 0, sizeof(*sk));
-    sk->calc_position = linear_stepper_calc_position;
+    sk->calc_position = auxiliary_stepper_calc_position;
     return sk;
 }

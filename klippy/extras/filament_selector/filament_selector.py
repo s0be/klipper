@@ -23,12 +23,6 @@ class FilamentSelector:
             logging.exception(msg)
             raise config.error(msg)
 
-        self.gcode = self.printer.lookup_object("gcode")
-        self.gcode.register_command('HOME_FILAMENT_SELECTOR', self.cmd_HOME_FILAMENT_SELECTOR)
-
-    def cmd_HOME_FILAMENT_SELECTOR(self, params):
-        self.kin.home(params)
-
 
 def load_config(config):
     return FilamentSelector(config)

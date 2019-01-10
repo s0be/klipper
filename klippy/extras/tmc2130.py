@@ -19,10 +19,33 @@ Registers = {
     "PWM_SCALE": 0x71, "ENCM_CTRL": 0x72, "LOST_STEPS": 0x73,
 }
 
-ReadRegisters = [
-    "GCONF", "GSTAT", "IOIN", "TSTEP", "XDIRECT", "MSCNT", "MSCURACT",
-    "CHOPCONF", "DRV_STATUS", "PWM_SCALE", "LOST_STEPS",
-]
+ReadRegisters = {
+    "GCONF": ["I_scale_analog", "internal_Rsense", "en_pwm_mode", "enc_commutation",
+              "shaft", "diag0_error", "diag0_otpw", "diag0_stall",
+              "diag1_stall", "diag1_index", "diag1_steps_skipped", "diag0_int_pushpull",
+              "diag0_int_pushpull", "small_hysteresis", "stop_enable", "direct_mode",
+              "test_mode"],
+    "GSTAT": ["reset", "drv_err", "uv_cp"],
+    "IOIN": ["STEP", "DIR", "DCEN_CFG4", "DCEN_CFG5", "DRV_ENN_CFG6", "DCO"],
+    "TSTEP": ["TSTEP:20"],
+    "XDIRECT": [],
+    "MSCNT": ["MSCNT:10"],
+    "MSCURACT": ["CUR_A:9", "unused:7", "CUR_B:9"],
+    "CHOPCONF": ["toff0", "toff1", "toff2", "toff3",
+                 "hstrt0", "hstrt1", "hstrt2",
+                 "hend0", "hend1", "hend2", "hend3",
+                 "fd3", "disfdcc", "rndtf", "chm",
+                 "tbl0", "tbl1",
+                 "vsense", "vhighfs", "vhighchm",
+                 "sync0", "sync1", "sync2", "sync3",
+                 "mres0", "mres1", "mres2", "mres3",
+                 "intpol", "dedge", "diss2g"],
+    "DRV_STATUS": ["SG_RESULT:10", "reserved:5", "fsactive", "CS_ACTUAL:5",
+                   "reserved:3", "stallGuard", "ot", "otpw",
+                   "s2ga", "s2gb", "ola", "olb", "stst"],
+    "PWM_SCALE": ["PWM_SCALE:8"],
+    "LOST_STEPS": ["LOST_STEPS:20"]
+}
 
 class TMC2130:
     def __init__(self, config):
@@ -123,12 +146,36 @@ class TMC2130:
     def cmd_DUMP_TMC(self, params):
         self.printer.lookup_object('toolhead').get_last_move_time()
         gcode = self.printer.lookup_object('gcode')
+        requested_reg = gcode.get_str('REGISTER', params)
         logging.info("DUMP_TMC %s", self.name)
-        for reg_name in ReadRegisters:
-            val = self.get_register(reg_name)
-            msg = "%-15s %08x" % (reg_name + ":", val)
-            logging.info(msg)
-            gcode.respond_info(msg)
+
+        def _respond_raw(label, value):
+            gcode.respond_info("%-15s %08x %s" % (label + ":", value, bin(value)))
+
+        def _respond_labeled(label, value):
+            gcode.respond_info("%-15s %s" % (label + ":", value))
+
+        if requested_reg in ReadRegisters:
+            sub_names = ReadRegisters[requested_reg]
+            val = self.get_register(requested_reg)
+            _respond_raw(requested_reg, val)
+            offset = 0
+
+            for sub_name in sub_names:
+                width = int(sub_name.split(":", 1)[1] if ":" in sub_name else 1)
+                sub_val = bin(val)[2:][::-1][offset:offset + width]
+                offset += width
+                _respond_labeled(sub_name, sub_val)
+
+
+        elif requested_reg is None:
+            gcode.respond_info("unknown register %s" % requested_reg)
+        else:
+            for reg_name in ReadRegisters:
+                val = self.get_register(reg_name)
+                msg = "%-15s %08x" % (reg_name + ":", val)
+                logging.info(msg)
+                gcode.respond_info(msg)
 
 # Endstop wrapper that enables tmc2130 "sensorless homing"
 class TMC2130VirtualEndstop:

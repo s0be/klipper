@@ -529,6 +529,8 @@ class GCodeParser:
     cmd_M18_aliases = ["M84"]
     def cmd_M18(self, params):
         # Turn off motors
+        self.toolhead.dwell(.100)
+        self.printer.send_event("gcode:m18", self.toolhead.get_last_move_time())
         self.toolhead.motor_off()
     def cmd_M400(self, params):
         # Wait for current moves to finish

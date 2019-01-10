@@ -17,13 +17,14 @@ class MMU2:
         self.mcu = mcu.get_printer_mcu(self.printer, mcu_name)
         self.pins = self.printer.lookup_object("pins")
         self.reactor = self.printer.get_reactor()
-        self.ips_impl = ips_filament_selector.load_kinematics(filament_toolhead, config)
 
         self.shift_reg = extras.hc595.load_config_prefix(extras.hc595.default_config(
             self.printer, 'hc595 mmu2_sr', mcu_name, 'PB5', 'PB6', 'PC7'
         ))
         self.printer.add_object('mmu2_sr', self.shift_reg)
         pins.MCU_PINS["atmega32u4"] = pins.port_pins(8)
+
+        self.ips_impl = ips_filament_selector.load_kinematics(filament_toolhead, config)
 
         self.led_g0 = self.pins.setup_pin('digital_out', "%s:PH0" % mcu_name)
         self.led_r0 = self.pins.setup_pin('digital_out', "%s:PH1" % mcu_name)
@@ -69,9 +70,6 @@ class MMU2:
         self.leds[self._rs_led].set_digital(print_time, 0)
         self._rs_led -= 1
         return self.reactor.NEVER if self._rs_led == -1 else time + self.FLASH_DELAY
-
-    def home(self, params):
-        self.ips_impl.home(params)
 
 
 def load_kinematics(filament_toolhead, config):
