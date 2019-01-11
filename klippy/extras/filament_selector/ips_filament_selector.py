@@ -7,19 +7,48 @@ import chelper
 import homing
 import logging
 import stepper
+from pulley_stepper import PulleyStepper
+
+
+class SelectorSensor:
+    def __init__(self, config, pin):
+        self.printer = config.get_printer()
+        self.pin = pin
+        self.status = 0
+        self.buttons = self.printer.try_load_module(config, "buttons")
+        self.buttons.register_buttons([self.pin], self.sensor_change)
+
+    def sensor_change(self, event_time, state):
+        logging.info("SensorUpdate:%s: %i -> %i" % (self.pin, self.status, state))
+        self.status = state
+        self.printer.send_event("filament_selector:sensor_change", self, event_time, state)
+
+    def current_status(self):
+        return self.status
 
 
 class IdlerPulleyFilamentSelector:
     def __init__(self, filament_toolhead, config):
         self.printer = config.get_printer()
-        self.printer.add_object("ips_filament_selector", self)
-        self.gcode = self.printer.lookup_object('gcode')
+        self.toolhead = None
+        self.extruder = None
+
         # Setup axis rails
         self.axis_i = AuxiliaryAxis(config, 'i', config.getfloat('max_i_velocity', above=0.))
-        self.axis_s = AuxiliaryAxis(config, 's', config.getfloat('max_s_velocity', above=0.))
+        self.axis_s = AuxiliaryAxis(config, 's', config.getfloat('max_s_velocity', above=0.), self._check_s_move)
+        self.axis_p = PulleyStepper(config.getsection('stepper_p'))
+        self.ext_id = config.getint('extruder', minval=0)
+        self.sensor_s = SelectorSensor(config, config.get('sensor_pin'))
 
+        # Register Additional Gcode commands
+        self.gcode = self.printer.lookup_object('gcode')
         self.gcode.register_command('HOME_FILAMENT_SELECTOR', self.home)
         self.gcode.register_command('HOME_FILAMENT_SELECTOR_DEBUG', self.home_debug)
+
+    def printer_state(self, state):
+        if state == 'ready':
+            self.toolhead = self.printer.lookup_object('toolhead')
+            self.printer.lookup_object("extruder%i" % self.ext_id)
 
     def home_debug(self, params):
         try:
@@ -41,12 +70,17 @@ class IdlerPulleyFilamentSelector:
         for axis in axes:
             axis.home()
 
+    def _check_s_move(self, aux_axis, end_pos, speed):
+        if self.sensor_s.current_status():
+            raise homing.EndstopMoveError([end_pos, 0., 0., 0.],
+                                          "Selector can't be homed while filament is loaded")
 
 class AuxiliaryAxis:
 
-    def __init__(self, config, axis, max_velocity):
+    def __init__(self, config, axis, max_velocity, move_check=None):
         self.printer = config.get_printer()
         self.axis = axis
+        self.move_check = move_check
 
         # Setup iterative solver
         ffi_main, ffi_lib = chelper.get_ffi()
@@ -150,8 +184,10 @@ class AuxiliaryAxis:
         if move_d is 0.:
             return
         speed = min(speed, self.max_velocity)
+        self.range_check(end_pos)
+        if self.move_check is not None:
+            self.move_check(self, end_pos, speed)
         move_t = abs(move_d / speed)
-        # check move? use rail range as limits
         print_time = self.get_toolhead().get_last_move_time()
         logging.info("aux-axis %s move from %s, by %s" % (self.axis, start_pos, move_d))
         self.move_fill(print_time, move_t, start_pos, move_d, speed)
@@ -168,6 +204,12 @@ class AuxiliaryAxis:
                         start_pos, 0., 0.,
                         dist, 0., 0.,
                         0., speed, 0)
+
+    def range_check(self, end_pos):
+        position_min, position_max = self.rail.get_range()
+        if end_pos < position_min or end_pos > position_max:
+            raise homing.EndstopMoveError([end_pos, 0., 0., 0.],
+                                          "Auxiliary axis '%s': Move out of range" % self.axis)
 
     def motor_off(self, print_time):
         self.rail.motor_enable(print_time, 0)

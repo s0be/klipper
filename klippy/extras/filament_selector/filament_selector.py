@@ -14,6 +14,7 @@ class FilamentSelector:
         try:
             mod = importlib.import_module('extras.filament_selector.' + kinematic_type)
             self.kin = mod.load_kinematics(self, config)
+            self.printer.add_object(kinematic_type, self.kin)
         except config.error as e:
             raise
         except self.printer.lookup_object('pins').error as e:
