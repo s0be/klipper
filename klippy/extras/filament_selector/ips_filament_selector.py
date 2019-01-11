@@ -108,8 +108,9 @@ class IdlerPulleyFilamentSelector:
 
     def move(self, params):
         path = self.gcode.get_int("PATH", params, minval=0, maxval=self.size - 1)
-        self.axis_s.move(self.path_s[path], self.axis_s.max_velocity)
-        self.axis_i.move(self.path_i[path], self.axis_i.max_velocity)
+        move_s = self.axis_s.move(self.path_s[path], self.axis_s.max_velocity)
+        move_i = self.axis_i.move(self.path_i[path], self.axis_i.max_velocity)
+        self.toolhead.dwell(max(move_s, move_i))
 
 class AuxiliaryAxis:
 
@@ -166,7 +167,7 @@ class AuxiliaryAxis:
         if home_info.retract_dist:
             retract_r = min(1., home_info.retract_dist / est_move_d)
             retract_pos = home_pos - axis_d * retract_r
-            self.move(retract_pos, home_speed)
+            self.get_toolhead().dwell(self.move(retract_pos, home_speed))
 
             force_pos2 = home_pos - axis_d * retract_r
             self.set_position(force_pos2)
@@ -195,7 +196,7 @@ class AuxiliaryAxis:
         error = None
         try:
             self.needs_homing = False
-            self.move(home_pos, home_speed)
+            self.get_toolhead().dwell(self.move(home_pos, home_speed))
         except homing.EndstopError as e:
             self.needs_homing = True
             error = "Error during homing move: %s" % (str(e),)
@@ -238,7 +239,7 @@ class AuxiliaryAxis:
         self.move_fill(print_time, move_t, start_pos, move_d, speed)
         self.rail.step_itersolve(self.cmove)
         self.commanded_pos = end_pos
-        self.get_toolhead().dwell(move_t)
+        return move_t
 
     def set_position(self, position):
         self.commanded_pos = position
