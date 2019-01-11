@@ -219,7 +219,8 @@ class MCU_endstop:
                     s.note_homing_end()
                 self._homing = False
                 self._home_cmd.send([self._oid, 0, 0, 0, 0, 0])
-                raise self.TimeoutError("Timeout during endstop homing")
+                raise self.TimeoutError("Timeout during endstop homing: %f"
+                                        % (home_end_time - last_sent_print_time))
         if self._mcu.is_shutdown():
             raise error("MCU is shutdown")
         if eventtime >= self._next_query_time:
