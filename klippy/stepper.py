@@ -212,6 +212,11 @@ class PrinterRail:
     def motor_enable(self, print_time, enable=0):
         for stepper in self.steppers:
             stepper.motor_enable(print_time, enable)
+    def is_motor_enabled(self):
+        for stepper in self.steppers:
+            if not stepper.is_motor_enabled():
+                return False
+        return True
 
 # Wrapper for dual stepper motor support
 def LookupMultiRail(config):

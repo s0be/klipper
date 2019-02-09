@@ -6,6 +6,7 @@
 import math, logging, importlib
 import mcu, homing, chelper, kinematics.extruder
 
+
 # Common suffixes: _d is distance (in mm), _v is velocity (in
 #   mm/second), _v2 is velocity squared (mm^2/s^2), _t is time (in
 #   seconds), _r is ratio (scalar between 0.0 and 1.0)
@@ -21,7 +22,7 @@ class Move:
         self.cmove = toolhead.cmove
         self.is_kinematic_move = True
         self.axes_d = axes_d = [end_pos[i] - start_pos[i] for i in (0, 1, 2, 3)]
-        self.move_d = move_d = math.sqrt(sum([d*d for d in axes_d[:3]]))
+        self.move_d = move_d = math.sqrt(sum([d * d for d in axes_d[:3]]))
         if move_d < .000000001:
             # Extrude only move
             self.end_pos = (start_pos[0], start_pos[1], start_pos[2],
@@ -36,18 +37,20 @@ class Move:
         # delta_v2 is the maximum amount of this squared-velocity that
         # can change in this move.
         self.max_start_v2 = 0.
-        self.max_cruise_v2 = velocity**2
+        self.max_cruise_v2 = velocity ** 2
         self.delta_v2 = 2.0 * move_d * self.accel
         self.max_smoothed_v2 = 0.
         self.smooth_delta_v2 = 2.0 * move_d * toolhead.max_accel_to_decel
+
     def limit_speed(self, speed, accel):
-        speed2 = speed**2
+        speed2 = speed ** 2
         if speed2 < self.max_cruise_v2:
             self.max_cruise_v2 = speed2
             self.min_move_t = self.move_d / speed
         self.accel = min(self.accel, accel)
         self.delta_v2 = 2.0 * self.move_d * self.accel
         self.smooth_delta_v2 = min(self.smooth_delta_v2, self.delta_v2)
+
     def calc_junction(self, prev_move):
         if not self.is_kinematic_move or not prev_move.is_kinematic_move:
             return
@@ -65,9 +68,9 @@ class Move:
         if junction_cos_theta > 0.999999:
             return
         junction_cos_theta = max(junction_cos_theta, -0.999999)
-        sin_theta_d2 = math.sqrt(0.5*(1.0-junction_cos_theta))
+        sin_theta_d2 = math.sqrt(0.5 * (1.0 - junction_cos_theta))
         R = self.toolhead.junction_deviation * sin_theta_d2 / (1. - sin_theta_d2)
-        tan_theta_d2 = sin_theta_d2 / math.sqrt(0.5*(1.0+junction_cos_theta))
+        tan_theta_d2 = sin_theta_d2 / math.sqrt(0.5 * (1.0 + junction_cos_theta))
         move_centripetal_v2 = .5 * self.move_d * tan_theta_d2 * self.accel
         prev_move_centripetal_v2 = (.5 * prev_move.move_d * tan_theta_d2
                                     * prev_move.accel)
@@ -79,6 +82,7 @@ class Move:
         self.max_smoothed_v2 = min(
             self.max_start_v2
             , prev_move.max_smoothed_v2 + prev_move.smooth_delta_v2)
+
     def set_junction(self, start_v2, cruise_v2, end_v2):
         # Determine accel, cruise, and decel portions of the move distance
         inv_delta_v2 = 1. / self.delta_v2
@@ -94,6 +98,7 @@ class Move:
         self.accel_t = accel_r * self.move_d / ((start_v + cruise_v) * 0.5)
         self.cruise_t = cruise_r * self.move_d / cruise_v
         self.decel_t = decel_r * self.move_d / ((end_v + cruise_v) * 0.5)
+
     def move(self):
         # Generate step times for the move
         next_move_time = self.toolhead.get_next_move_time()
@@ -110,7 +115,9 @@ class Move:
         self.toolhead.update_move_time(
             self.accel_t + self.cruise_t + self.decel_t)
 
+
 LOOKAHEAD_FLUSH_TIME = 0.250
+
 
 # Class to track a list of pending move requests and to facilitate
 # "look-ahead" across moves to reduce acceleration between moves.
@@ -120,14 +127,18 @@ class MoveQueue:
         self.queue = []
         self.leftover = 0
         self.junction_flush = LOOKAHEAD_FLUSH_TIME
+
     def reset(self):
         del self.queue[:]
         self.leftover = 0
         self.junction_flush = LOOKAHEAD_FLUSH_TIME
+
     def set_flush_time(self, flush_time):
         self.junction_flush = flush_time
+
     def set_extruder(self, extruder):
         self.extruder_lookahead = extruder.lookahead
+
     def flush(self, lazy=False):
         self.junction_flush = LOOKAHEAD_FLUSH_TIME
         update_flush_count = lazy
@@ -138,7 +149,7 @@ class MoveQueue:
         # after the last move.
         delayed = []
         next_end_v2 = next_smoothed_v2 = peak_cruise_v2 = 0.
-        for i in range(flush_count-1, self.leftover-1, -1):
+        for i in range(flush_count - 1, self.leftover - 1, -1):
             move = queue[i]
             reachable_start_v2 = next_end_v2 + move.delta_v2
             start_v2 = min(move.max_start_v2, reachable_start_v2)
@@ -147,14 +158,14 @@ class MoveQueue:
             if smoothed_v2 < reachable_smoothed_v2:
                 # It's possible for this move to accelerate
                 if (smoothed_v2 + move.smooth_delta_v2 > next_smoothed_v2
-                    or delayed):
+                        or delayed):
                     # This move can decelerate or this is a full accel
                     # move after a full decel move
                     if update_flush_count and peak_cruise_v2:
                         flush_count = i
                         update_flush_count = False
                     peak_cruise_v2 = min(move.max_cruise_v2, (
-                        smoothed_v2 + reachable_smoothed_v2) * .5)
+                            smoothed_v2 + reachable_smoothed_v2) * .5)
                     if delayed:
                         # Propagate peak_cruise_v2 to any delayed moves
                         if not update_flush_count and i < flush_count:
@@ -183,6 +194,7 @@ class MoveQueue:
         # Remove processed moves from the queue
         self.leftover = flush_count - move_count
         del queue[:move_count]
+
     def add_move(self, move):
         self.queue.append(move)
         if len(self.queue) == 1:
@@ -193,7 +205,26 @@ class MoveQueue:
             # Enough moves have been queued to reach the target flush time.
             self.flush(lazy=True)
 
+
+class Axis:
+    def __init__(self, label, kinematics, set_position, get_commanded_pos, get_need_enable,
+                 get_max_velocity, get_max_accel, is_kinematic):
+        self.label = label
+        self.kinematics = kinematics
+
+        self.set_position = set_position
+        self.get_commanded_pos = get_commanded_pos
+        self.get_need_enable = get_need_enable
+        self.get_max_velocity = get_max_velocity
+        self.get_max_accel = get_max_accel
+
+        self.is_kinematic = is_kinematic
+        self.is_homing = False
+        self.limits = (1.0, -1.0)
+
+
 STALL_TIME = 0.100
+
 
 # Main code to track events (and their timing) on the printer toolhead
 class ToolHead:
@@ -204,7 +235,6 @@ class ToolHead:
             m for n, m in self.printer.lookup_objects(module='mcu')]
         self.mcu = self.all_mcus[0]
         self.move_queue = MoveQueue()
-        self.commanded_pos = [0., 0., 0., 0.]
         self.printer.register_event_handler("klippy:shutdown",
                                             self._handle_shutdown)
         # Velocity and acceleration control
@@ -244,7 +274,9 @@ class ToolHead:
         self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
         self.move_fill = ffi_lib.move_fill
         # Create kinematics class
-        self.extruder = kinematics.extruder.DummyExtruder()
+        kinematics.extruder.add_printer_objects(config, self.max_velocity, self.max_accel)
+        extruders = kinematics.extruder.get_printer_extruders(self.printer)
+        self.extruder = extruders[0]  # TODO. ask the extruders which is active before assuming 0?
         self.move_queue.set_extruder(self.extruder)
         kin_name = config.get('kinematics')
         try:
@@ -258,17 +290,20 @@ class ToolHead:
             msg = "Error loading kinematics '%s'" % (kin_name,)
             logging.exception(msg)
             raise config.error(msg)
+
         # SET_VELOCITY_LIMIT command
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command('SET_VELOCITY_LIMIT', self.cmd_SET_VELOCITY_LIMIT,
                                desc=self.cmd_SET_VELOCITY_LIMIT_help)
         gcode.register_command('M204', self.cmd_M204)
+
     # Print time tracking
     def update_move_time(self, movetime):
         self.print_time += movetime
         flush_to_time = self.print_time - self.move_flush_time
         for m in self.all_mcus:
             m.flush_moves(flush_to_time)
+
     def _calc_print_time(self):
         curtime = self.reactor.monotonic()
         est_print_time = self.mcu.estimated_print_time(curtime)
@@ -277,12 +312,14 @@ class ToolHead:
             self.last_print_start_time = self.print_time
             self.printer.send_event("toolhead:sync_print_time",
                                     curtime, est_print_time, self.print_time)
+
     def get_next_move_time(self):
         if self.sync_print_time:
             self.sync_print_time = False
             self.reactor.update_timer(self.flush_timer, self.reactor.NOW)
             self._calc_print_time()
         return self.print_time
+
     def _flush_lookahead(self, must_sync=False):
         sync_print_time = self.sync_print_time
         self.move_queue.flush()
@@ -294,15 +331,18 @@ class ToolHead:
             self.reactor.update_timer(self.flush_timer, self.reactor.NEVER)
             for m in self.all_mcus:
                 m.flush_moves(self.print_time)
+
     def get_last_move_time(self):
         self._flush_lookahead()
         if self.sync_print_time:
             self._calc_print_time()
         return self.print_time
+
     def reset_print_time(self, min_print_time=0.):
         self._flush_lookahead(must_sync=True)
         est_print_time = self.mcu.estimated_print_time(self.reactor.monotonic())
         self.print_time = max(min_print_time, est_print_time)
+
     def _check_stall(self):
         eventtime = self.reactor.monotonic()
         if self.sync_print_time:
@@ -326,6 +366,7 @@ class ToolHead:
                 return
             eventtime = self.reactor.pause(eventtime + min(1., stall_time))
         self.need_check_stall = est_print_time + self.buffer_time_high + 0.100
+
     def _flush_handler(self, eventtime):
         try:
             print_time = self.print_time
@@ -341,13 +382,20 @@ class ToolHead:
             logging.exception("Exception in flush_handler")
             self.printer.invoke_shutdown("Exception in flush_handler")
         return self.reactor.NEVER
+
     # Movement commands
+    def get_axes(self):
+        return [axis for name, axis in self.printer.lookup_objects('axis')]
+
     def get_position(self):
-        return list(self.commanded_pos)
-    def set_position(self, newpos, homing_axes=()):
+        return {axis: axis.get_commanded_pos() for axis in self.get_axes()}
+
+    def set_position(self, newpos):
+        # newpos = {axis:float}
         self._flush_lookahead()
-        self.commanded_pos[:] = newpos
-        self.kin.set_position(newpos, homing_axes)
+        for axis, pos in newpos.viewitems():
+            axis.set_position(pos)
+
     def move(self, newpos, speed):
         move = Move(self, self.commanded_pos, newpos, speed)
         if not move.move_d:
@@ -360,11 +408,13 @@ class ToolHead:
         self.move_queue.add_move(move)
         if self.print_time > self.need_check_stall:
             self._check_stall()
+
     def dwell(self, delay, check_stall=True):
         self.get_last_move_time()
         self.update_move_time(delay)
         if check_stall:
             self._check_stall()
+
     def motor_off(self):
         self.dwell(STALL_TIME)
         last_move_time = self.get_last_move_time()
@@ -373,6 +423,7 @@ class ToolHead:
             ext.motor_off(last_move_time)
         self.dwell(STALL_TIME)
         logging.debug('; Max time of %f', last_move_time)
+
     def wait_moves(self):
         self._flush_lookahead()
         if self.mcu.is_fileoutput():
@@ -381,6 +432,7 @@ class ToolHead:
         while (not self.sync_print_time
                or self.print_time >= self.mcu.estimated_print_time(eventtime)):
             eventtime = self.reactor.pause(eventtime + 0.100)
+
     def set_extruder(self, extruder):
         last_move_time = self.get_last_move_time()
         self.extruder.set_active(last_move_time, False)
@@ -388,8 +440,10 @@ class ToolHead:
         self.extruder = extruder
         self.move_queue.set_extruder(extruder)
         self.commanded_pos[3] = extrude_pos
+
     def get_extruder(self):
         return self.extruder
+
     # Misc commands
     def stats(self, eventtime):
         for m in self.all_mcus:
@@ -398,10 +452,12 @@ class ToolHead:
         is_active = buffer_time > -60. or not self.sync_print_time
         return is_active, "print_time=%.3f buffer_time=%.3f print_stall=%d" % (
             self.print_time, max(buffer_time, 0.), self.print_stall)
+
     def check_busy(self, eventtime):
         est_print_time = self.mcu.estimated_print_time(eventtime)
         lookahead_empty = not self.move_queue.queue
         return self.print_time, est_print_time, lookahead_empty
+
     def get_status(self, eventtime):
         print_time = self.print_time
         estimated_print_time = self.mcu.estimated_print_time(eventtime)
@@ -411,28 +467,38 @@ class ToolHead:
             status = "Printing"
         else:
             status = "Ready"
-        return { 'status': status, 'print_time': print_time,
-                 'estimated_print_time': estimated_print_time,
-                 'printing_time': print_time - last_print_start_time }
+        return {'status': status, 'print_time': print_time,
+                'estimated_print_time': estimated_print_time,
+                'printing_time': print_time - last_print_start_time}
+
     def _handle_shutdown(self):
         self.move_queue.reset()
         self.reset_print_time()
+
     def get_kinematics(self):
         return self.kin
+
     def get_max_velocity(self):
-        return self.max_velocity, self.max_accel
+        return self.max_velocity
+
+    def get_max_accel(self):
+        return self.max_accel
+
     def get_max_axis_halt(self):
         # Determine the maximum velocity a cartesian axis could halt
         # at due to the junction_deviation setting.  The 8.0 was
         # determined experimentally.
         return min(self.max_velocity,
                    math.sqrt(8. * self.junction_deviation * self.max_accel))
+
     def _calc_junction_deviation(self):
-        scv2 = self.square_corner_velocity**2
+        scv2 = self.square_corner_velocity ** 2
         self.junction_deviation = scv2 * (math.sqrt(2.) - 1.) / self.max_accel
         self.max_accel_to_decel = min(self.requested_accel_to_decel,
                                       self.max_accel)
+
     cmd_SET_VELOCITY_LIMIT_help = "Set printer velocity limits"
+
     def cmd_SET_VELOCITY_LIMIT(self, params):
         print_time = self.get_last_move_time()
         gcode = self.printer.lookup_object('gcode')
@@ -452,11 +518,12 @@ class ToolHead:
         msg = ("max_velocity: %.6f\n"
                "max_accel: %.6f\n"
                "max_accel_to_decel: %.6f\n"
-               "square_corner_velocity: %.6f"% (
+               "square_corner_velocity: %.6f" % (
                    max_velocity, max_accel, self.requested_accel_to_decel,
                    square_corner_velocity))
         self.printer.set_rollover_info("toolhead", "toolhead: %s" % (msg,))
         gcode.respond_info(msg)
+
     def cmd_M204(self, params):
         gcode = self.printer.lookup_object('gcode')
         if 'P' in params and 'T' in params and 'S' not in params:
@@ -469,6 +536,6 @@ class ToolHead:
         self.max_accel = min(accel, self.config_max_accel)
         self._calc_junction_deviation()
 
+
 def add_printer_objects(config):
     config.get_printer().add_object('toolhead', ToolHead(config))
-    kinematics.extruder.add_printer_objects(config)

@@ -1,0 +1,8 @@
+FROM python:2.7
+
+ENV CFFI_VER 1.6.0
+ENV PYSERIAL_VER 3.2.1
+ENV GREENLET_VER 0.4.10
+ENV PYTEST_VER 4.2.0
+
+RUN pip install cffi==${CFFI_VER} pyserial==${PYSERIAL_VER} greenlet==${GREENLET_VER} pytest==${PYTEST_VER}

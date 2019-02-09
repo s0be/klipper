@@ -57,7 +57,7 @@ class MCU_SPI:
             [self.oid, data], 'spi_transfer_response', self.oid)
 
 # Helper to setup an spi bus from settings in a config section
-def MCU_SPI_from_config(config, mode, pin_option="cs_pin",
+def fMCU_SPI_from_config(config, mode, pin_option="cs_pin",
                         default_speed=100000, shutdown_seq=()):
     # Determine pin from config
     ppins = config.get_printer().lookup_object("pins")
