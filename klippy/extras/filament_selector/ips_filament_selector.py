@@ -55,19 +55,12 @@ class IdlerPulleyFilamentSelector:
         self.gcode = self.printer.lookup_object('gcode')
         self.gcode.register_command('FILAMENT_SELECTOR_HOME', self.home)
         self.gcode.register_command('FILAMENT_SELECTOR_HOME_S', self.home_s)
-        self.gcode.register_command('FILAMENT_SELECTOR_HOME_DEBUG', self.home_debug)
         self.gcode.register_command('FILAMENT_SELECTOR_MOVE', self.move)
 
     def printer_state(self, state):
         if state == 'ready':
             self.toolhead = self.printer.lookup_object('toolhead')
             self.printer.lookup_object("extruder%i" % self.ext_id)
-
-    def home_debug(self, params):
-        try:
-            self.home(params)
-        except Exception as e:
-            logging.warning(e)
 
     def home(self, params):
         axes = []
@@ -86,8 +79,12 @@ class IdlerPulleyFilamentSelector:
                 "Selector blocked by filament. "
                 "Set position via 'FILAMENT_SELECTOR_HOME_S PATH=?'")
 
-        for axis in axes:
-            axis.home()
+        try:
+            for axis in axes:
+                axis.home()
+        except Exception as e:
+            logging.warning(e)
+            self.gcode.respond_info(str(e))
 
     def home_s(self, params):
         path = self.gcode.get_int("PATH", params, minval=0, maxval=self.size - 1)
@@ -217,11 +214,13 @@ class AuxiliaryAxis:
             mcu_endstop.home_finalize()
 
         if error is not None:
+            self.motor_off(self.get_toolhead().get_last_move_time())
             raise homing.EndstopError(error)
 
         if verify_movement:
             for s, pos in start_mcu_pos:
                 if s.get_mcu_position() == pos:
+                    self.motor_off(self.get_toolhead().get_last_move_time())
                     raise homing.EndstopError("Endstop %s still triggered after retract" % (self.axis,))
 
     def move(self, end_pos, speed):

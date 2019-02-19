@@ -79,6 +79,7 @@ class TMC2130:
         toff = config.getint('driver_TOFF', 4, minval=1, maxval=15)
         hend = config.getint('driver_HEND', 7, minval=0, maxval=15)
         hstrt = config.getint('driver_HSTRT', 0, minval=0, maxval=7)
+        sfilt = 0 if config.getboolean('driver_SFILT', False) else 1
         sgt = config.getint('driver_SGT', 0, minval=-64, maxval=63) & 0x7f
         pwm_scale = config.getboolean('driver_PWM_AUTOSCALE', True)
         pwm_freq = config.getint('driver_PWM_FREQ', 1, minval=0, maxval=3)
@@ -102,7 +103,7 @@ class TMC2130:
                           ihold | (irun << 8) | (iholddelay << 16))
         self.set_register("TPOWERDOWN", tpowerdown)
         self.set_register("TPWMTHRS", max(0, min(0xfffff, sc_threshold)))
-        self.set_register("COOLCONF", sgt << 16)
+        self.set_register("COOLCONF", (sfilt << 24 | sgt << 16))
         self.set_register("PWMCONF", (
             pwm_ampl | (pwm_grad << 8) | (pwm_freq << 16) | (pwm_scale << 18)))
     def current_bits(self, current, sense_resistor, vsense_on):
@@ -146,14 +147,14 @@ class TMC2130:
     def cmd_DUMP_TMC(self, params):
         self.printer.lookup_object('toolhead').get_last_move_time()
         gcode = self.printer.lookup_object('gcode')
-        requested_reg = gcode.get_str('REGISTER', params)
+        requested_reg = gcode.get_str('REGISTER', params, None)
         logging.info("DUMP_TMC %s", self.name)
 
         def _respond_raw(label, value):
-            gcode.respond_info("%-15s %08x %s" % (label + ":", value, bin(value)))
+            gcode.respond_info("%-15s %08x        %s" % (label + ":", value, bin(value)))
 
         def _respond_labeled(label, value):
-            gcode.respond_info("%-15s %s" % (label + ":", value))
+            gcode.respond_info("%-15s %-15s %i" % (label + ":", value, int(value, 2)))
 
         if requested_reg in ReadRegisters:
             sub_names = ReadRegisters[requested_reg]
@@ -167,9 +168,6 @@ class TMC2130:
                 offset += width
                 _respond_labeled(sub_name, sub_val)
 
-
-        elif requested_reg is None:
-            gcode.respond_info("unknown register %s" % requested_reg)
         else:
             for reg_name in ReadRegisters:
                 val = self.get_register(reg_name)
