@@ -20,9 +20,11 @@ class error(Exception):
 
 class Heater:
     error = error
-    def __init__(self, config, sensor):
-        printer = config.get_printer()
-        self.name = config.get_name()
+    def __init__(self, config, sensor, gcode_id):
+        self.printer = config.get_printer()
+        self.gcode = self.printer.lookup_object("gcode")
+        self.name = config.get_name().split()[-1]
+        self.gcode_id = gcode_id
         # Setup sensor
         self.sensor = sensor
         self.min_temp = config.getfloat('min_temp', minval=KELVIN_TO_CELCIUS)
@@ -33,7 +35,7 @@ class Heater:
         # Setup temperature checks
         self.min_extrude_temp = config.getfloat(
             'min_extrude_temp', 170., minval=self.min_temp, maxval=self.max_temp)
-        is_fileoutput = printer.get_start_args().get('debugoutput') is not None
+        is_fileoutput = self.printer.get_start_args().get('debugoutput') is not None
         self.can_extrude = self.min_extrude_temp <= 0. or is_fileoutput
         self.max_power = config.getfloat('max_power', 1., above=0., maxval=1.)
         self.smooth_time = config.getfloat('smooth_time', 2., above=0.)
@@ -50,7 +52,7 @@ class Heater:
         self.control = algo(self, config)
         # Setup output heater pin
         heater_pin = config.get('heater_pin')
-        ppins = printer.lookup_object('pins')
+        ppins = self.printer.lookup_object('pins')
         if algo is ControlBangBang and self.max_power == 1.:
             self.mcu_pwm = ppins.setup_pin('digital_out', heater_pin)
         else:
@@ -60,8 +62,11 @@ class Heater:
             self.mcu_pwm.setup_cycle_time(pwm_cycle_time)
         self.mcu_pwm.setup_max_duration(MAX_HEAT_TIME)
         # Load additional modules
-        printer.try_load_module(config, "verify_heater %s" % (self.name,))
-        printer.try_load_module(config, "pid_calibrate")
+        self.printer.try_load_module(config, "verify_heater %s" % (self.name,))
+        self.printer.try_load_module(config, "pid_calibrate")
+        self.gcode.register_mux_command("SET_HEATER_TEMPERATURE", "HEATER", self.name,
+                                    self.cmd_SET_HEATER_TEMPERATURE,
+                                    desc=self.cmd_SET_HEATER_TEMPERATURE_help)
     def set_pwm(self, read_time, value):
         if self.target_temp <= 0.:
             value = 0.
@@ -133,6 +138,11 @@ class Heater:
             target_temp = self.target_temp
             smoothed_temp = self.smoothed_temp
         return {'temperature': smoothed_temp, 'target': target_temp}
+    cmd_SET_HEATER_TEMPERATURE_help = "Sets a heater temperature"
+    def cmd_SET_HEATER_TEMPERATURE(self, params):
+        print_time = self.printer.lookup_object('toolhead').get_last_move_time()
+        temp = self.gcode.get_float('TARGET', params, 0.)
+        self.set_temp(print_time, temp)
 
 
 ######################################################################
@@ -220,14 +230,15 @@ class PrinterHeaters:
         self.printer = config.get_printer()
         self.sensors = {}
         self.heaters = {}
+        self.heaters_gcode_id = {}
         # Register TURN_OFF_HEATERS command
         gcode = self.printer.lookup_object('gcode')
         gcode.register_command("TURN_OFF_HEATERS", self.cmd_TURN_OFF_HEATERS,
                                desc=self.cmd_TURN_OFF_HEATERS_help)
     def add_sensor(self, sensor_type, sensor_factory):
         self.sensors[sensor_type] = sensor_factory
-    def setup_heater(self, config):
-        heater_name = config.get_name()
+    def setup_heater(self, config, gcode_id):
+        heater_name = config.get_name().split()[-1]
         if heater_name == 'extruder':
             heater_name = 'extruder0'
         if heater_name in self.heaters:
@@ -235,7 +246,8 @@ class PrinterHeaters:
         # Setup sensor
         sensor = self.setup_sensor(config)
         # Create heater
-        self.heaters[heater_name] = heater = Heater(config, sensor)
+        self.heaters[heater_name] = heater = Heater(config, sensor, gcode_id)
+        self.heaters_gcode_id[heater.gcode_id] = heater_name
         return heater
     def lookup_heater(self, heater_name):
         if heater_name == 'extruder':
@@ -258,6 +270,13 @@ class PrinterHeaters:
         print_time = self.printer.lookup_object('toolhead').get_last_move_time()
         for heater in self.heaters.values():
             heater.set_temp(print_time, 0.)
+    def get_all_heaters(self):
+        return self.heaters.values()
+    def get_heater_by_gcode_id(self, gcode_id):
+        if gcode_id in self.heaters_gcode_id:
+            heater_name = self.heaters_gcode_id[gcode_id]
+            return self.heaters[heater_name]
+        return None
 
 def add_printer_objects(config):
     config.get_printer().add_object('heater', PrinterHeaters(config))

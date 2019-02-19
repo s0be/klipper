@@ -15,8 +15,8 @@ src-$(CONFIG_HAVE_GPIO_SPI) += avr/spi.c
 src-$(CONFIG_HAVE_GPIO_I2C) += avr/i2c.c
 src-$(CONFIG_HAVE_GPIO_HARD_PWM) += avr/hard_pwm.c
 src-$(CONFIG_AVR_WATCHDOG) += avr/watchdog.c
-src-$(CONFIG_AVR_USBSERIAL) += avr/usbserial.c generic/usb_cdc.c
-src-$(CONFIG_AVR_SERIAL) += avr/serial.c generic/serial_irq.c
+src-$(CONFIG_USBSERIAL) += avr/usbserial.c generic/usb_cdc.c
+src-$(CONFIG_SERIAL) += avr/serial.c generic/serial_irq.c
 src-$(CONFIG_HAVE_HC595_SHIFT_REG) += avr/hc595.c
 
 # Suppress broken "misspelled signal handler" warnings on gcc 4.8.1

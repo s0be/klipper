@@ -14,6 +14,9 @@ as a reference for the config file. See the [Slicers](Slicers.md)
 document for information on configuring a slicer with Klipper. See the
 [Endstop Phase](Endstop_Phase.md) document for information on
 Klipper's "stepper phase adjusted endstop" system. See the
+[Bed Level](Bed_Level.md) document for information on bed leveling
+with Klipper. See the [Probe Calibrate](Probe_Calibrate.md) document
+for information on calibrating automatic Z probes. See the
 [Delta Calibrate](Delta_Calibrate.md) document for information on
 calibrating delta printers. The
 [Pressure Advance](Pressure_Advance.md) document contains information
@@ -25,8 +28,11 @@ some common questions. The [G-Codes](G-Codes.md) document lists
 currently supported run-time commands.
 
 The history of Klipper releases is available at
-[releases](Releases.md). See [contact](Contact.md) for information on
-bug reporting and general communication with the developers.
+[releases](Releases.md). The [config changes](Config_Changes.md)
+document describes recent software changes that may require users to
+update their printer config file. See [contact](Contact.md) for
+information on bug reporting and general communication with the
+developers.
 
 Developer Documentation
 =======================
