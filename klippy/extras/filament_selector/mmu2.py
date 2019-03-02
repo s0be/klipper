@@ -45,16 +45,14 @@ class MMU2:
         for led in self.leds:
             led.setup_max_duration(0.)
 
-        self.mcu.register_config_callback(self._build_config)
         self.toolhead = None
         self._rs_led = 0
 
-    def _build_config(self):
-        self.toolhead = self.printer.lookup_object('toolhead')
+        self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
-    def printer_state(self, state):
-        if state == 'ready':
-            self.reactor.register_timer(self._ready_led_sequence, self.reactor.NOW)
+    def handle_ready(self):
+        self.toolhead = self.printer.lookup_object('toolhead')
+        self.reactor.register_timer(self._ready_led_sequence, self.reactor.NOW)
 
     def _ready_led_sequence(self, time):
         print_time = self.toolhead.get_last_move_time()

@@ -240,6 +240,7 @@ class TMC2130:
         set_config_field(config, "PWM_GRAD", 4)
         set_config_field(config, "pwm_freq", 1)
         set_config_field(config, "pwm_autoscale", True)
+        set_config_field(config, "sfilt", True)
         sgt = config.getint('driver_SGT', 0, minval=-64, maxval=63) & 0x7f
         self.fields.set_field("sgt", sgt)
         # Send registers
