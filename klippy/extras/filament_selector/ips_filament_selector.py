@@ -1,24 +1,28 @@
-# Filament selector based on Idler/Pulley/Selector style control
+# Filament selector based on Idler/Pulley/Selector style control. MMU2 kinematics independent of the Prusa PCB
 #
 # Copyright (C) 2018  Trevor Jones <trevorjones141@gmail.com>
 #
 # This file may be distributed under the terms of the GNU GPLv3 license.
+
 import chelper
 import homing
 import logging
 import stepper
+from extras.buttons import MCU_buttons
 
 
 class SelectorSensor:
-    def __init__(self, config, pin):
+    def __init__(self, config, pin_params):
         self.printer = config.get_printer()
-        self.pin = pin
+        self.pin_params = pin_params
         self.status = 0
-        self.buttons = self.printer.try_load_module(config, "buttons")
-        self.buttons.register_buttons([self.pin], self.sensor_change)
+        mcu = self.pin_params['chip']
+        self.mcu_buttons = MCU_buttons(self.printer, mcu)
+        self.mcu_buttons.setup_buttons([self.pin_params], self.sensor_change)
+        self.endstop = mcu.setup_pin('endstop', self.pin_params)
 
     def sensor_change(self, event_time, state):
-        logging.info("SensorUpdate:%s: %i -> %i" % (self.pin, self.status, state))
+        logging.info("SensorUpdate:%s: %i -> %i" % (self.pin_params['pin'], self.status, state))
         self.status = state
         self.printer.send_event("filament_selector:sensor_change", self, event_time, state)
 
@@ -26,9 +30,27 @@ class SelectorSensor:
         return self.status
 
 
+class FilamentPath:
+    def __init__(self, config, number):
+        self.printer = config.get_printer()
+        self.number = number
+        self._status = 0
+
+    def set_status(self, status, broadcast=True):
+        previous = self._status
+        self._status = status
+        if broadcast and (previous != self._status):
+            logging.info("FilamentPathStatus:%s: %s -> %s" % (self.number, previous, self._status))
+            self.printer.send_event("filament_selector:path_status", self)
+
+    def get_status(self):
+        return self._status
+
+
 class IdlerPulleyFilamentSelector:
     def __init__(self, filament_toolhead, config):
         self.printer = config.get_printer()
+        self.pins = self.printer.lookup_object("pins")
         self.toolhead = None
         self.extruder = None
 
@@ -36,9 +58,13 @@ class IdlerPulleyFilamentSelector:
         self.axis_i = AuxiliaryAxis(config, 'i', config.getfloat('max_i_velocity', above=0.))
 
         self.axis_s = AuxiliaryAxis(config, 's', config.getfloat('max_s_velocity', above=0.), self._check_s_move)
-        self.sensor_s = SelectorSensor(config, config.get('sensor_pin'))
+        self.sensor_pin_config = self.pins.lookup_pin(config.get('sensor_pin'), share_type='ips_sensor')
+        self.sensor_s = SelectorSensor(config, self.sensor_pin_config)
 
-        self.axis_p = FilamentPulley(config, 'p', config.getfloat('max_s_velocity', 100, above=0.), self._check_p_move)
+        self.axis_p = FilamentPulley(config, 'p',
+                                     config.getfloat('max_s_velocity', 100, above=0.),
+                                     self._check_p_move,
+                                     self.sensor_s)
         self.ext_id = config.getint('extruder', minval=0)
 
         # Calculate move positions
@@ -46,11 +72,12 @@ class IdlerPulleyFilamentSelector:
         self.interval_i = config.getfloat('interval_i')
         self.interval_s = config.getfloat('interval_s')
         self.offset_i = [config.getfloat('offset_i_%i' % path, 0.) for path in range(self.size)]
-        self.offset_s = [config.getfloat('offset_i_%i' % path, 0.) for path in range(self.size)]
+        self.offset_s = [config.getfloat('offset_s_%i' % path, 0.) for path in range(self.size)]
         self.path_i = [path * self.interval_i + self.offset_i[path] for path in range(self.size)]
         self.path_s = [path * self.interval_s + self.offset_s[path] for path in range(self.size)]
         self.check_path_positions(config, self.axis_i, self.path_i)
         self.check_path_positions(config, self.axis_s, self.path_s)
+        self.filament_path = [FilamentPath(config, path) for path in range(self.size)]
 
         # Register Additional Gcode commands
         self.gcode = self.printer.lookup_object('gcode')
@@ -58,6 +85,7 @@ class IdlerPulleyFilamentSelector:
         self.gcode.register_command('FILAMENT_SELECTOR_HOME_S', self.gcode_command(self.home_s))
         self.gcode.register_command('FILAMENT_SELECTOR_MOVE', self.gcode_command(self.move))
         self.gcode.register_command('FILAMENT_SELECTOR_FEED', self.gcode_command(self.feed))
+        self.gcode.register_command('FILAMENT_SELECTOR_CHECK_PATH', self.gcode_command(self.home_filament))
 
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
 
@@ -75,6 +103,7 @@ class IdlerPulleyFilamentSelector:
             except Exception as e:
                 logging.warning(e)
                 self.gcode.respond_info(str(e))
+
         return catch_and_respond
 
     def feed(self, params):
@@ -93,12 +122,25 @@ class IdlerPulleyFilamentSelector:
 
         for axis in axes:
             if axis is self.axis_i:
-                for _ in range(0, self.size):
-                    axis.home()
-                    axis.set_position(self.interval_i)
-                    self.get_toolhead().dwell(axis.move(0, axis.max_velocity))
+                axis.needs_homing = False
+                home_info = axis.rail.get_homing_info()
+                home_pos = home_info.position_endstop
+                position_min, position_max = axis.get_range()
+                force_pos = home_info.position_endstop
+                if home_info.positive_dir:
+                    force_pos -= (home_info.position_endstop - position_min)
+                else:
+                    force_pos += (position_max - home_info.position_endstop)
+
+                axis.set_position(force_pos)
+                self.get_toolhead().dwell(axis.move(home_pos, 40))
+                self.get_toolhead().wait_moves()
+                axis.needs_homing = True
 
             axis.home()
+
+        for path in self.filament_path:
+            self.home_filament({"PATH": path.number})
 
     def get_axes_from_gcode_params(self, params):
         axes = []
@@ -117,7 +159,7 @@ class IdlerPulleyFilamentSelector:
         self.axis_s.set_position(self.path_s[path])
 
     def _check_s_move(self, aux_axis, end_pos, speed):
-        if self.sensor_s.current_status():
+        if aux_axis.commanded_pos != end_pos and self.sensor_s.current_status():
             raise homing.EndstopMoveError([end_pos, 0., 0., 0.],
                                           "Selector blocked by filament.")
 
@@ -125,7 +167,7 @@ class IdlerPulleyFilamentSelector:
         move_d = end_pos - aux_axis.commanded_pos
         # make sure the filament won't get removed from the path
         # if move_d < 0. and not self.sensor_s.current_status():
-            # raise homing.EndstopMoveError([end_pos, 0., 0., 0.])
+        # raise homing.EndstopMoveError([end_pos, 0., 0., 0.])
 
     def check_path_positions(self, config, axis, paths):
         position_min, position_max = axis.get_range()
@@ -133,6 +175,25 @@ class IdlerPulleyFilamentSelector:
             if position < position_min or position > position_max:
                 raise config.error("%s axis position out of range. path:%i, position:%f, min:%f, max:%f"
                                    % (axis.axis, index, position, position_min, position_max))
+
+    def home_filament(self, params):
+        path = self.gcode.get_int("PATH", params, -1, minval=0, maxval=self.size - 1)
+        self.move({"PATH": path})
+        filament_path = self.filament_path[path]
+        filament_path.set_status(0, broadcast=False)
+
+        self.axis_p.home()
+        #todo catch the fail
+        #todo if it fails, retract the full home length so selector space is for sure clear
+        self.get_toolhead().wait_moves()
+        if self.sensor_s.current_status():
+            filament_path.set_status(1)
+            # Retract back out of selector
+            self.feed({"LENGTH": -25.0})  # todo homing retract from config
+            self.get_toolhead().wait_moves()
+
+        if not filament_path.get_status():
+            self.gcode.respond_info("No filament in path %s" % path)
 
     def move(self, params):
         axes = self.get_axes_from_gcode_params(params)
@@ -155,10 +216,11 @@ class IdlerPulleyFilamentSelector:
 
 class FilamentPulley:
 
-    def __init__(self, config, axis, max_velocity, move_check=None):
+    def __init__(self, config, axis, max_velocity, move_check, s_sensor):
         self.printer = config.get_printer()
         self.axis = axis
         self.move_check = move_check
+        self.sensor = s_sensor
 
         ffi_main, ffi_lib = chelper.get_ffi()
         self.cmove = ffi_main.gc(ffi_lib.move_alloc(), ffi_lib.free)
@@ -167,6 +229,8 @@ class FilamentPulley:
         self.stepper.setup_itersolve('auxiliary_stepper_alloc')
         self.max_velocity = max_velocity
         self.commanded_pos = 0.
+
+        self.sensor.endstop.add_stepper(self.stepper.mcu_stepper)
 
         self.printer.register_event_handler(
             "toolhead:motor_off", self.motor_off)
@@ -200,6 +264,44 @@ class FilamentPulley:
         self.stepper.step_itersolve(self.cmove)
         self.commanded_pos = end_pos
         return move_t
+
+    def home(self):
+        self.motor_on(self.get_toolhead().get_last_move_time())
+        self.get_toolhead().dwell(.1)
+
+        max_home_move = 60  # TODO config param
+        home_speed = 10  # TODO config param
+        mcu_endstop = self.sensor.endstop
+        mcu_endstop.home_prepare()
+
+        print_time = self.get_toolhead().get_last_move_time()
+        step_dist = self.stepper.get_step_dist()
+        mcu_endstop.home_start(
+            print_time, homing.ENDSTOP_SAMPLE_TIME,
+            homing.ENDSTOP_SAMPLE_COUNT, step_dist / home_speed)
+
+        error = None
+        try:
+            self.get_toolhead().dwell(self.move(max_home_move, home_speed))
+        except homing.EndstopError as e:
+            error = "Error during homing move: %s" % (str(e),)
+
+        move_end_print_time = self.get_toolhead().get_last_move_time()
+        self.get_toolhead().reset_print_time(print_time)
+        logging.info("move_end: %f, print_time: %f" % (move_end_print_time, print_time))
+        try:
+            mcu_endstop.home_wait(move_end_print_time)
+        except mcu_endstop.TimeoutError as e:
+            if error is None:
+                error = "Failed to home filament: %s" % (str(e))
+
+        self.set_position(0)
+
+        mcu_endstop.home_finalize()
+
+        if error is not None:
+            self.motor_off(self.get_toolhead().get_last_move_time())
+            raise homing.EndstopError(error)
 
     def set_position(self, position):
         self.commanded_pos = position
@@ -331,7 +433,7 @@ class AuxiliaryAxis:
     def move(self, end_pos, speed, max_speed=None):
         start_pos = self.commanded_pos
         move_d = end_pos - start_pos
-        if move_d is 0.:
+        if move_d == 0.:
             return None
 
         speed = min(speed, self.max_velocity if max_speed is None else max_speed)

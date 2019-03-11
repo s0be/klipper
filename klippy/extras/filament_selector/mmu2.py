@@ -27,21 +27,50 @@ class MMU2:
         self.ips_impl = ips_filament_selector.load_kinematics(filament_toolhead, config)
         self.printer.add_object("ips_filament_selector", self.ips_impl)
 
-        self.led_g0 = self.pins.setup_pin('digital_out', "%s:PH0" % mcu_name)
-        self.led_r0 = self.pins.setup_pin('digital_out', "%s:PH1" % mcu_name)
-        self.led_g1 = self.pins.setup_pin('digital_out', "%s:PH2" % mcu_name)
-        self.led_r1 = self.pins.setup_pin('digital_out', "%s:PH3" % mcu_name)
-        self.led_g2 = self.pins.setup_pin('digital_out', "%s:PH4" % mcu_name)
+        self.leds = []
+        self.leds_red = []
+        self.leds_green = []
+
+        self.led_r0 = self.pins.setup_pin('digital_out', "%s:PG7" % mcu_name)
+        self.leds.append(self.led_r0)
+        self.leds_red.append(self.led_r0)
+
+        self.led_g0 = self.pins.setup_pin('digital_out', "%s:PG6" % mcu_name)
+        self.leds.append(self.led_g0)
+        self.leds_green.append(self.led_g0)
+
+        self.led_r1 = self.pins.setup_pin('digital_out', "%s:PH7" % mcu_name)
+        self.leds.append(self.led_r1)
+        self.leds_red.append(self.led_r1)
+
+        self.led_g1 = self.pins.setup_pin('digital_out', "%s:PH6" % mcu_name)
+        self.leds.append(self.led_g1)
+        self.leds_green.append(self.led_g1)
+
         self.led_r2 = self.pins.setup_pin('digital_out', "%s:PH5" % mcu_name)
-        self.led_g3 = self.pins.setup_pin('digital_out', "%s:PH6" % mcu_name)
-        self.led_r3 = self.pins.setup_pin('digital_out', "%s:PH7" % mcu_name)
-        self.led_g4 = self.pins.setup_pin('digital_out', "%s:PG6" % mcu_name)
-        self.led_r4 = self.pins.setup_pin('digital_out', "%s:PG7" % mcu_name)
-        self.leds = [self.led_g0, self.led_r0,
-                     self.led_g1, self.led_r1,
-                     self.led_g2, self.led_r2,
-                     self.led_g3, self.led_r3,
-                     self.led_g4, self.led_r4]
+        self.leds.append(self.led_r2)
+        self.leds_red.append(self.led_r2)
+
+        self.led_g2 = self.pins.setup_pin('digital_out', "%s:PH4" % mcu_name)
+        self.leds.append(self.led_g2)
+        self.leds_green.append(self.led_g2)
+
+        self.led_r3 = self.pins.setup_pin('digital_out', "%s:PH3" % mcu_name)
+        self.leds.append(self.led_r3)
+        self.leds_red.append(self.led_r3)
+
+        self.led_g3 = self.pins.setup_pin('digital_out', "%s:PH2" % mcu_name)
+        self.leds.append(self.led_g3)
+        self.leds_green.append(self.led_g3)
+
+        self.led_r4 = self.pins.setup_pin('digital_out', "%s:PH1" % mcu_name)
+        self.leds.append(self.led_r4)
+        self.leds_red.append(self.led_r4)
+
+        self.led_g4 = self.pins.setup_pin('digital_out', "%s:PH0" % mcu_name)
+        self.leds.append(self.led_g4)
+        self.leds_green.append(self.led_g4)
+
         for led in self.leds:
             led.setup_max_duration(0.)
 
@@ -49,10 +78,18 @@ class MMU2:
         self._rs_led = 0
 
         self.printer.register_event_handler("klippy:ready", self.handle_ready)
+        self.printer.register_event_handler("filament_selector:path_status", self.handle_path_status)
 
     def handle_ready(self):
         self.toolhead = self.printer.lookup_object('toolhead')
         self.reactor.register_timer(self._ready_led_sequence, self.reactor.NOW)
+
+    def handle_path_status(self, path):
+        logging.info("path update: %s" % path)
+        number = path.number
+        print_time = self.toolhead.get_last_move_time()
+        self.leds_green[number].set_digital(print_time, path.get_status())
+        self.toolhead.wait_moves()
 
     def _ready_led_sequence(self, time):
         print_time = self.toolhead.get_last_move_time()
@@ -65,10 +102,17 @@ class MMU2:
     def _clear_led(self, time):
         if self._rs_led == 10:
             self._rs_led -= 1
+
         print_time = self.toolhead.get_last_move_time()
         self.leds[self._rs_led].set_digital(print_time, 0)
+
         self._rs_led -= 1
-        return self.reactor.NEVER if self._rs_led == -1 else time + self.FLASH_DELAY
+
+        if self._rs_led == -1:
+            self.toolhead.wait_moves()
+            return self.reactor.NEVER
+        else:
+            return time + self.FLASH_DELAY
 
 
 def load_kinematics(filament_toolhead, config):
