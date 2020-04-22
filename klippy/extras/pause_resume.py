@@ -43,6 +43,8 @@ class PauseResume:
         self.send_pause_command()
         self.gcode.run_script_from_command(
             "SAVE_GCODE_STATE STATE=PAUSE_STATE")
+        self.gcode.run_script_from_command(
+            "SET_IDLE_TIMEOUT TIMEOUT=3600")
         self.is_paused = True
     def cmd_RESUME(self, params):
         if not self.is_paused:
@@ -55,6 +57,8 @@ class PauseResume:
             % (velocity))
         self.is_paused = False
         self.pause_command_sent = False
+        self.gcode.run_script_from_command(
+            "SET_IDLE_TIMEOUT TIMEOUT=600")
         if self.sd_paused:
             # Printing from virtual sd, run pause command
             self.v_sd.cmd_M24({})
