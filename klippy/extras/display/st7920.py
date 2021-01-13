@@ -69,7 +69,7 @@ class ST7920:
             cmds = [add_cmd] + cmds
             self.is_extended = is_extended
         cmd_type.send([self.oid, cmds], reqclock=BACKGROUND_PRIORITY_CLOCK)
-        #logging.debug("st7920 %d %s", is_data, repr(cmds))
+        logging.debug("st7920 %d %s", is_data, repr(cmds))
     def flush(self):
         # Find all differences in the framebuffers and send them to the chip
         for new_data, old_data, fb_id in self.all_framebuffers:
