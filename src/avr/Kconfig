@@ -148,18 +148,42 @@ config SIMULAVR
 
          If unsure, select "N".
 
-# HC595 options config, Limiting to 4 IC's so uint32 can be used for I/O
-# Prusa MMU2 rev 0.3 https://github.com/prusa3d/MM-control-2.0
-config HAVE_HC595_SHIFT_REG
-    bool "Include SNx4HC595 Support (Prusa MMU2)"
-    depends on MACH_atmega32u4
+config SHIFT_REG
+    bool "Support for shift register as GPIO Expander"
     default n
 
-if HAVE_HC595_SHIFT_REG
-    config HC595_LENGTH
-        int "SNx4HC595 ic array length"
-        default 2
-        range 1 4
-endif
+choice 
+    depends on SHIFT_REG 
+    prompt "Preset"
+    config PRUSA_MMU2
+        # Prusa MMU2 rev 0.3 https://github.com/prusa3d/MM-control-2.0
+        bool "Prusa MMU2 Config"
+    config CUSTOM
+        bool "Custom"
+endchoice
+
+config SHIFT_REG_LENGTH
+    depends on SHIFT_REG
+    int "Shift register bit count"
+    default 16 if PRUSA_MMU2
+    default 8
+
+config SR_CLOCK_GPIO
+    depends on SHIFT_REG
+    int "Clock GPIO"
+    default 23 if PRUSA_MMU2
+    default -1
+
+config SR_DATA_GPIO
+    depends on SHIFT_REG
+    int "Data GPIO"
+    default 13 if PRUSA_MMU2
+    default -1
+
+config SR_LATCH_GPIO
+    depends on SHIFT_REG
+    int "Latch GPIO"
+    default 14 if PRUSA_MMU2
+    default -1
 
 endif
